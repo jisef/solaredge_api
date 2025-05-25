@@ -1,10 +1,15 @@
-mod Meters;
+mod meters;
+mod power;
+mod energy;
 
-use crate::Meters::meters_to_string;
-use dotenvy::dotenv;
-use http_adapter_reqwest::{ReqwestAdapter, reqwest};
+use crate::energy::TimeUnit;
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+use http_adapter_reqwest::reqwest;
+use reqwest::Error;
+use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use std::collections::HashMap;
+use crate::meters::Meters;
 
 #[tokio::main]
 async fn main() {
@@ -12,20 +17,36 @@ async fn main() {
 
     let api_key = dotenvy::var("SOLAR_EDGE_API_KEY").unwrap();
     let site_id = dotenvy::var("SOLAR_EDGE_SITE_ID").unwrap();
-    let meters: Vec<crate::Meters::Meters> =
-        vec![Meters::Meters::Production, Meters::Meters::Consumption];
+    let meters: Vec<meters::Meters> =
+        vec![meters::Meters::Production, meters::Meters::Consumption];
 
-    /*
-        let avg = get_average_power(api_key.clone(), site_id.clone()).await;
-        println!("{:?}", avg);
-    */
+    let date = NaiveDate::from_ymd_opt(2025, 5, 1).unwrap();
+    let time = NaiveTime::from_hms_opt(11, 0, 0).unwrap();
+    let naive_datetime = NaiveDateTime::new(date, time);
+    let from: DateTime<Utc> = DateTime::from_naive_utc_and_offset(naive_datetime, Utc);
 
-    /*
-            let energy = get_energy(api_key.clone(), site_id.clone(), meters).await;
-            println!("{:?}", energy);
-    */
-    let powerflow = get_powerflow(api_key.clone(), site_id.clone()).await;
+
+    power::get_power_details_in_range(api_key.clone(), site_id.clone(), meters.clone(), from, Utc::now()).await.unwrap();
+    power::get_power_details(api_key.clone(), site_id.clone(), meters.clone()).await.unwrap();
+
+    let energy = energy::get_site_energy(api_key.clone(), site_id.clone(), meters.clone(), TimeUnit::HOUR, from, Utc::now()).await.unwrap();
+    
+    println!("{}", energy.get_unit());
+    println!("{}", energy.get_average_for_meter(Meters::Production));
+
 }
+pub async fn fetch_and_parse<T>(url: String) -> Result<T, Error> where T: DeserializeOwned {
+    let response = reqwest::get(url.clone())
+        .await?;
+
+    match response.json::<T>().await {
+        Ok(data) => {Ok(data)}
+        Err(err) => {Err(err)}
+    }
+}
+
+/// Gets all PowerDetails
+
 
 /// Returns the average of PowerDetails and the Unit
 /// Hashmap<String, f64>, String
@@ -58,61 +79,6 @@ async fn get_average_power(api_key: String, site_id: String) -> (HashMap<String,
     (map, unit)
 }
 
-/// meters: Production, Consumption, SelfConsumption, FeedIn, Purchased
-///
-///
-async fn get_energy(api_key: String, site_id: String, meters: Vec<crate::Meters::Meters>) {
-    //todo!("does not make sense s");
-    let url = format!(
-        "https://monitoringapi.solaredge.com/site/{}/energyDetails?meters={}&timeUnit=DAY&startTime=2013-05-15%2011:00:00&endTime=2013-05-25%2013:00:00&api_key={}",
-        site_id,
-        meters_to_string(meters.clone()),
-        api_key
-    );
-    let edr = reqwest::get(url)
-        .await
-        .expect("Error whilye making request")
-        .json::<EnergyDetailsResponse>()
-        .await
-        .expect("error parsing");
-    println!("{:?}", edr);
-    let unit = edr.energy_details.unit;
-    let mut map: HashMap<String, f64> = HashMap::new();
-
-    for meter in edr.energy_details.meters {
-        let mut sum = 0.0;
-        for meter_value in meter.values {
-            if meter_value.value.is_some() {
-                sum += meter_value.value.unwrap()
-            }
-        }
-    }
-}
-
-async fn get_powerflow(api_key: String, site_id: String) -> Result<SiteCurrentPowerFlow, String> {
-    let url = format!(
-        "https://monitoringapi.solaredge.com/site/{}/currentPowerFlow?api_key={}",
-        site_id, api_key
-    );
-
-    match reqwest::get(url).await {
-        Ok(x) => match x.json::<SiteCurrentPowerFlow>().await {
-            Ok(supi_dupi) => {
-                return Ok(supi_dupi);
-            }
-            Err(err) => {
-                println!("{}", err.to_string());
-                println!("Could not parse answer to struct");
-                return Err(String::from("Could not parse answer to struct"));
-            }
-        },
-        Err(r) => {
-            println!("Request failed: {}", r.to_string());
-            return Err(format!("Request failed: {}", r.to_string()));
-        }
-    }
-}
-
 #[derive(Debug, Deserialize)]
 pub struct PowerDetailsWrapper {
     #[serde(rename = "powerDetails")]
@@ -140,11 +106,7 @@ pub struct MeterValue {
     pub value: Option<f64>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct EnergyDetailsResponse {
-    #[serde(rename = "energyDetails")]
-    pub energy_details: EnergyDetails,
-}
+
 
 #[derive(Debug, Deserialize)]
 pub struct EnergyDetails {
@@ -155,13 +117,18 @@ pub struct EnergyDetails {
 }
 #[derive(Deserialize, Debug)]
 struct SiteCurrentPowerFlow {
-    updateRefreshRate: Option<u32>,
+    #[serde(rename = "updateRefreshRate")]
+    update_refresh_rate: Option<u32>,
     unit: String,
     connections: Vec<Connection>,
-    GRID: Component,
-    LOAD: Component,
-    PV: Component,
-    STORAGE: Option<Storage>,
+    #[serde(rename = "GRID")]
+    grid: Component,
+    #[serde(rename = "LOAD")]
+    load: Component,
+    #[serde(rename = "PV")]
+    pv: Component,
+    #[serde(rename = "STORAGE")]
+    storage: Option<Storage>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -173,13 +140,16 @@ struct Connection {
 #[derive(Deserialize, Debug)]
 struct Component {
     status: String,
-    currentPower: Option<f64>,
+    #[serde(rename = "currentPower")]
+    current_power: Option<f64>,
 }
 
 #[derive(Deserialize, Debug)]
 struct Storage {
     status: String,
-    currentPower: Option<f64>,
-    chargeLevel: Option<u32>,
+    #[serde(rename = "currentPower")]
+    current_power: Option<f64>,
+    #[serde(rename = "chargeLevel")]
+    charge_level: Option<u32>,
     critical: Option<bool>,
 }
