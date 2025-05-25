@@ -11,7 +11,7 @@ pub enum Meters {
     FeedIn,
 }
 
-impl fmt::Display for Meters {
+impl Display for Meters {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
     }
