@@ -1,10 +1,10 @@
 use crate::meters::{meters_to_string, Meters};
 use crate::reqwest::Error;
-use crate::{fetch_and_parse, EnergyDetails, Meter};
+use crate::{fetch_and_parse, EnergyDetails};
 use chrono::{DateTime, Utc};
+use serde::Deserialize;
 use std::fmt;
 use std::fmt::{Debug, Formatter};
-use serde::Deserialize;
 
 #[derive(Debug)]
 pub enum TimeUnit {

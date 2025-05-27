@@ -1,6 +1,5 @@
 use std::fmt;
 use std::fmt::{Display, Formatter};
-use std::ops::Add;
 
 #[derive(Debug, Clone)]
 pub enum Meters {
