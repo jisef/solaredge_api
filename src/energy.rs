@@ -1,5 +1,5 @@
+use reqwest::Error;
 use crate::meters::{meters_to_string, Meters};
-use crate::reqwest::Error;
 use crate::{fetch_and_parse, EnergyDetails};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;

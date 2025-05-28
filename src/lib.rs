@@ -1,19 +1,16 @@
-mod meters;
-mod power;
-mod energy;
-
-use crate::energy::TimeUnit;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
-use http_adapter_reqwest::reqwest;
 use reqwest::Error;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
-use std::collections::HashMap;
-use crate::meters::Meters;
+use crate::energy::TimeUnit;
+use crate::meters::{Meter, Meters};
 
-#[tokio::main]
+mod test;
+pub mod energy;
+pub mod meters;
+pub mod power;
+#[tokio::test]
 async fn main() {
-
     let api_key = dotenvy::var("SOLAR_EDGE_API_KEY").unwrap();
     let site_id = dotenvy::var("SOLAR_EDGE_SITE_ID").unwrap();
     let meters: Vec<meters::Meters> =
@@ -29,12 +26,13 @@ async fn main() {
     power::get_power_details(api_key.clone(), site_id.clone(), meters.clone()).await.unwrap();
 
     let energy = energy::get_site_energy(api_key.clone(), site_id.clone(), meters.clone(), TimeUnit::HOUR, from, Utc::now()).await.unwrap();
-    
+
     println!("{}", energy.get_unit());
     println!("{}", energy.get_average_for_meter(Meters::Production));
-
 }
-pub async fn fetch_and_parse<T>(url: String) -> Result<T, Error> where T: DeserializeOwned {
+    
+
+async fn fetch_and_parse<T>(url: String) -> Result<T, Error> where T: DeserializeOwned {
     let response = reqwest::get(url.clone())
         .await?;
 
@@ -44,60 +42,10 @@ pub async fn fetch_and_parse<T>(url: String) -> Result<T, Error> where T: Deseri
     }
 }
 
-/// Gets all PowerDetails
 
 
-/// Returns the average of PowerDetails and the Unit
-/// Hashmap<String, f64>, String
-async fn get_average_power(api_key: String, site_id: String) -> (HashMap<String, f64>, String) {
-    let url = format!(
-        "https://monitoringapi.solaredge.com/site/{}/powerDetails?meters=PRODUCTION,CONSUMPTION&startTime=2025-04-1%2011:00:00&endTime=2025-04-30%2013:00:00&api_key={}",
-        site_id, api_key
-    );
-    let pd = reqwest::get(url)
-        .await
-        .unwrap()
-        .json::<PowerDetailsWrapper>()
-        .await
-        .unwrap();
-    let unit = pd.power_details.unit;
-    let mut map: HashMap<String, f64> = HashMap::new();
-    for meter in pd.power_details.meters {
-        let mut avg = 0.0;
-        let mut avg_count = 0.0;
-        for x in meter.values {
-            if x.value.is_some() {
-                avg += x.value.unwrap();
-                avg_count += 1.0;
-            }
-        }
-        let avg = avg / avg_count;
-        map.insert(meter.meter_type, avg);
-    }
 
-    (map, unit)
-}
 
-#[derive(Debug, Deserialize)]
-pub struct PowerDetailsWrapper {
-    #[serde(rename = "powerDetails")]
-    pub power_details: PowerDetails,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct PowerDetails {
-    #[serde(rename = "timeUnit")]
-    pub time_unit: String,
-    pub unit: String,
-    pub meters: Vec<Meter>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Meter {
-    #[serde(rename = "type")]
-    pub meter_type: String,
-    pub values: Vec<MeterValue>,
-}
 
 #[derive(Debug, Deserialize)]
 pub struct MeterValue {
