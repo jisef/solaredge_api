@@ -1,5 +1,7 @@
 use std::fmt;
 use std::fmt::{Display, Formatter};
+use serde::Deserialize;
+use crate::MeterValue;
 
 #[derive(Debug, Clone)]
 pub enum Meters {
@@ -31,4 +33,11 @@ pub fn meters_to_string(meters: Vec<Meters>) -> String {
     }
 
     to_return
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Meter {
+    #[serde(rename = "type")]
+    pub meter_type: String,
+    pub values: Vec<MeterValue>,
 }
