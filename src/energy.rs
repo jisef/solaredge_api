@@ -1,5 +1,7 @@
-use crate::meters::Meters;
-use crate::EnergyDetails;
+use reqwest::Error;
+use crate::meters::{meters_to_string, Meters};
+use crate::{EnergyDetails};
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use std::fmt;
 use std::fmt::{Debug, Formatter};
